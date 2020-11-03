@@ -15,7 +15,7 @@ class Apcu implements StateDriver {
 			throw new RuntimeException('"apcu" extension is disabled. Consider enabling it in php.ini');
 		}
 		do {
-			$this->prefix = uniqid((string)getmypid()) . "_";
+			$this->prefix = substr(str_shuffle("abcdefghijklmnopqrstuvwxyz0123456789"), 10) . "_";
 		} while (apcu_exists(__CLASS__ . "_prefix_" . $this->prefix));
 	}
 

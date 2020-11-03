@@ -2,13 +2,10 @@
 
 namespace axxapy\EasyFork;
 
-use axxapy\EasyFork\Internal\LoggerWrapper;
 use InvalidArgumentException;
-use Psr\Log\LoggerAwareInterface;
-use Psr\Log\LoggerInterface;
 use RuntimeException;
 
-class ForkPool implements LoggerAwareInterface  {
+class ForkPool {
 	const STATE_IDLE     = 0;
 	const STATE_RUNNING  = 1;
 	const STATE_STOPPING = 2;
@@ -27,7 +24,7 @@ class ForkPool implements LoggerAwareInterface  {
 	private $tick_us               = 20000; //0.02 seconds
 	private $graceful_shutdown_sec = 5; //seconds
 
-	/** @var LoggerWrapper */
+	/** @var Logger */
 	private $logger;
 
 	private $interrupt_handler_fork;
@@ -40,12 +37,14 @@ class ForkPool implements LoggerAwareInterface  {
 		}
 		$this->job         = $job;
 		$this->forks_count = $forks;
-		$this->logger      = new LoggerWrapper;
+		$this->logger      = new Logger;
 		$this->registerSigHandler();
 	}
 
-	public function setLogger(LoggerInterface $logger): self {
-		$this->logger = (new LoggerWrapper($logger))->setPrefix("[MAIN] ");
+	public function setLogger(callable $func): self {
+		$this->logger
+			->setPrefix("[MAIN] ")
+			->setWriter($func);
 		return $this;
 	}
 
@@ -70,14 +69,10 @@ class ForkPool implements LoggerAwareInterface  {
 		$title = '[MAIN] ' . implode(' ', $_SERVER['argv']); //cli_get_process_title();
 		@cli_set_process_title($title);
 
-		$logger = $this->logger->unwrap();
 		for ($i = 0; $i < $this->forks_count; $i++) {
 			$this->forks[$i] = new Fork($this->job, $i);
 			if ($this->interrupt_handler_fork) {
 				$this->forks[$i]->setInterruptHandler($this->interrupt_handler_fork);
-			}
-			if ($logger) {
-				$this->forks[$i]->setLogger($logger);
 			}
 		}
 
@@ -128,22 +123,20 @@ class ForkPool implements LoggerAwareInterface  {
 					$running++;
 				}
 			}
-			$running && sleep(1);
-		} while ($running && time() - $time <= $this->graceful_shutdown_sec);
+		} while ($running > 0 && time() - $time >= $this->graceful_shutdown_sec);
 
-		if ($running) {
-			$this->logger->logf("Failed to gracefully %d/%d children. Killing them...", $running, count($this->forks));
+		if (!$running) {
+			$this->logger->logf("Failed to gracefully stop some of the children. Killing them...");
 		}
 
-		for ($attempts = 0; $attempts < 10 && $running; $attempts++) {
-			$running = 0;
+		$running = 0;
+		for ($attempts = 0; $attempts < 10 && $running > 0; $attempts++) {
 			foreach ($this->forks as $fork) {
 				if (!$fork->kill()) $running++;
 			}
-			$running && sleep(1);
 		}
 
-		$this->logger->log($running ? "Failed to stop $running kids" : 'Done');
+		$this->logger->logf($running ? "Failed to stop $running kids" : 'Done');
 	}
 
 	private function registerSigHandler(): void {
@@ -154,9 +147,7 @@ class ForkPool implements LoggerAwareInterface  {
 			$this->logger->logf("Signal received: %d", $signo);
 
 			if ($this->interrupt_handler) {
-				if (call_user_func($this->interrupt_handler, $signo) === false) {
-					return; // ignore signal if handler returns false
-				}
+				call_user_func($this->interrupt_handler, $signo);
 			}
 
 			$this->stop();

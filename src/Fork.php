@@ -2,33 +2,25 @@
 
 namespace axxapy\EasyFork;
 
-use axxapy\EasyFork\Internal\PrivateState;
-use Psr\Log\LoggerAwareInterface;
-use Psr\Log\LoggerInterface;
 use RuntimeException;
-use axxapy\EasyFork\Internal\LoggerWrapper;
 
-class Fork implements LoggerAwareInterface {
+class Fork {
 	private $child_pid = 0;
 
 	private $job;
 	private $num;
 
-	/** @var PrivateState */
+	/** @var ForkState */
 	private $state;
 
 	private $generation = 0;
 
 	private $interrupt_handler;
 
-	/** @var LoggerWrapper */
-	private $logger;
-
 	public function __construct(callable $job, int $num = 0) {
-		$this->job    = $job;
-		$this->num    = $num;
-		$this->logger = new LoggerWrapper;
-		$this->state  = new PrivateState($this->num, $this->generation);
+		$this->job   = $job;
+		$this->num   = $num;
+		$this->state = new ForkState($this->num, $this->generation);
 
 		pcntl_async_signals(true);
 	}
@@ -38,18 +30,13 @@ class Fork implements LoggerAwareInterface {
 		return $this;
 	}
 
-	public function setLogger(LoggerInterface $logger): self {
-		$this->logger = (new LoggerWrapper($logger))->setPrefix("[{$this->num}:{$this->generation}] ");
-		return $this;
-	}
-
 	/** @throws RuntimeException */
-	public function start(array $payload = []): self {
+	public function start(array $payload = []): bool {
 		if ($this->isRunning()) {
-			return $this;
+			return false;
 		}
 
-		$this->state = new PrivateState($this->num, $this->generation++, $payload, $this->state->getStorageDriver());
+		$this->state = new ForkState($this->num, $this->generation++, $payload, $this->state->getStorageDriver());
 
 		$pid = pcntl_fork();
 		if ($pid < 0) {
@@ -66,19 +53,17 @@ class Fork implements LoggerAwareInterface {
 				$this->state->markDone();
 			}
 			die();
-			// sometimes child process not properly exiting
-			posix_kill($pid, SIGKILL);
 		}
 
 		$this->child_pid = $pid;
-		return $this;
+		return true;
 	}
 
 	public function getPid(): int {
 		return $this->child_pid;
 	}
 
-	public function getState(): State {
+	public function getState(): ForkState {
 		return $this->state;
 	}
 
@@ -124,19 +109,13 @@ class Fork implements LoggerAwareInterface {
 	}
 
 	private function registerSigHandler(): void {
-		$pid     = getmypid();
+		$pid = getmypid();
 		$handler = function (int $signo) use ($pid) {
 			if ($pid !== getmypid()) return;
 
-			$this->logger->logf("signal received: %d", $signo);
-
 			if ($this->interrupt_handler) {
-				if (call_user_func($this->interrupt_handler, $this->state, $signo) === false) {
-					return;
-				}
+				call_user_func($this->interrupt_handler, $this->state, $signo);
 			}
-
-			$this->state->setShouldStop();
 		};
 
 		foreach ([SIGTERM, SIGHUP, SIGINT, SIGUSR1, SIGUSR2] as $signo) {
