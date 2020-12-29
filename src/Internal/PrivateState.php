@@ -2,11 +2,15 @@
 
 namespace axxapy\EasyFork\Internal;
 
-use axxapy\EasyFork\StateDrivers\StateStorageFactory;
+use axxapy\EasyFork\State;
 use axxapy\EasyFork\StateDrivers\StateDriver;
-use RuntimeException;
+use axxapy\EasyFork\StateDrivers\StateStorageFactory;
 
-class State {
+class PrivateState implements State {
+	public function setShouldStop() {
+		$this->should_stop = true;
+	}
+
 	/** @var int */
 	private $num;
 
@@ -18,6 +22,8 @@ class State {
 
 	/** @var StateDriver */
 	private $driver;
+
+	private $should_stop = false;
 
 	public function __construct(int $num, int $generation, array $payload = [], StateDriver $driver = null) {
 		$this->num        = $num;
@@ -75,5 +81,9 @@ class State {
 	/** @throws RuntimeException */
 	public function getAll(): array {
 		return $this->getStorageDriver()->get('::DATA::', []);
+	}
+
+	public function shouldStop(): bool {
+		return $this->should_stop;
 	}
 }

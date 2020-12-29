@@ -128,20 +128,22 @@ class ForkPool implements LoggerAwareInterface  {
 					$running++;
 				}
 			}
-		} while ($running > 0 && time() - $time >= $this->graceful_shutdown_sec);
+			$running && sleep(1);
+		} while ($running && time() - $time <= $this->graceful_shutdown_sec);
 
-		if (!$running) {
-			$this->logger->logf("Failed to gracefully stop some of the children. Killing them...");
+		if ($running) {
+			$this->logger->logf("Failed to gracefully %d/%d children. Killing them...", $running, count($this->forks));
 		}
 
-		$running = 0;
-		for ($attempts = 0; $attempts < 10 && $running > 0; $attempts++) {
+		for ($attempts = 0; $attempts < 10 && $running; $attempts++) {
+			$running = 0;
 			foreach ($this->forks as $fork) {
 				if (!$fork->kill()) $running++;
 			}
+			$running && sleep(1);
 		}
 
-		$this->logger->logf($running ? "Failed to stop $running kids" : 'Done');
+		$this->logger->log($running ? "Failed to stop $running kids" : 'Done');
 	}
 
 	private function registerSigHandler(): void {

@@ -2,11 +2,11 @@
 
 namespace axxapy\EasyFork;
 
+use axxapy\EasyFork\Internal\PrivateState;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 use axxapy\EasyFork\Internal\LoggerWrapper;
-use axxapy\EasyFork\Internal\State;
 
 class Fork implements LoggerAwareInterface {
 	private $child_pid = 0;
@@ -14,7 +14,7 @@ class Fork implements LoggerAwareInterface {
 	private $job;
 	private $num;
 
-	/** @var State */
+	/** @var PrivateState */
 	private $state;
 
 	private $generation = 0;
@@ -28,7 +28,7 @@ class Fork implements LoggerAwareInterface {
 		$this->job    = $job;
 		$this->num    = $num;
 		$this->logger = new LoggerWrapper;
-		$this->state  = new State($this->num, $this->generation);
+		$this->state  = new PrivateState($this->num, $this->generation);
 
 		pcntl_async_signals(true);
 	}
@@ -49,7 +49,7 @@ class Fork implements LoggerAwareInterface {
 			return $this;
 		}
 
-		$this->state = new State($this->num, $this->generation++, $payload, $this->state->getStorageDriver());
+		$this->state = new PrivateState($this->num, $this->generation++, $payload, $this->state->getStorageDriver());
 
 		$pid = pcntl_fork();
 		if ($pid < 0) {
@@ -128,9 +128,15 @@ class Fork implements LoggerAwareInterface {
 		$handler = function (int $signo) use ($pid) {
 			if ($pid !== getmypid()) return;
 
+			$this->logger->logf("signal received: %d", $signo);
+
 			if ($this->interrupt_handler) {
-				call_user_func($this->interrupt_handler, $this->state, $signo);
+				if (call_user_func($this->interrupt_handler, $this->state, $signo) === false) {
+					return;
+				}
 			}
+
+			$this->state->setShouldStop();
 		};
 
 		foreach ([SIGTERM, SIGHUP, SIGINT, SIGUSR1, SIGUSR2] as $signo) {
