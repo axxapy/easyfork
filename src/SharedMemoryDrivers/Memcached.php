@@ -1,10 +1,10 @@
 <?php declare(strict_types=1);
 
-namespace axxapy\EasyFork\StateDrivers;
+namespace axxapy\EasyFork\SharedMemoryDrivers;
 
 use RuntimeException;
 
-class Memcached implements StateDriver {
+class Memcached implements DriverInterface {
 	private $pid;
 	private $port;
 	private $client;
@@ -64,7 +64,7 @@ class Memcached implements StateDriver {
 		return -1;
 	}
 
-	public function set(string $key, $value) {
+	public function set(string $key, mixed $value): void {
 		if (!$this->client->set($key, $value)) {
 			throw new RuntimeException(sprintf('failed to save state key to memcached: [%d] [%d] %s',
 				$this->client->getLastErrorCode(),
@@ -74,7 +74,7 @@ class Memcached implements StateDriver {
 		}
 	}
 
-	public function get(string $key, $default = null) {
+	public function get(string $key, mixed $default = null): mixed {
 		$val = $this->client->get($key);
 		if ($val === false) {
 			if ($this->client->getLastErrorCode() == \Memcached::RES_NOTFOUND) {

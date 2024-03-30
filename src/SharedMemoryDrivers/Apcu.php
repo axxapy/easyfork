@@ -1,11 +1,11 @@
 <?php declare(strict_types=1);
 
-namespace axxapy\EasyFork\StateDrivers;
+namespace axxapy\EasyFork\SharedMemoryDrivers;
 
 use RuntimeException;
 
-class Apcu implements StateDriver {
-	private $prefix;
+class Apcu implements DriverInterface {
+	private string $prefix;
 
 	public function __construct() {
 		if (!extension_loaded('apcu')) {
@@ -19,7 +19,7 @@ class Apcu implements StateDriver {
 		} while (apcu_exists(__CLASS__ . "_prefix_" . $this->prefix));
 	}
 
-	public function set(string $key, $value) {
+	public function set(string $key, mixed $value): void {
 		$res = apcu_store($this->prefix . $key, $value);
 
 		if ($res === false || is_array($res)) {
@@ -27,7 +27,7 @@ class Apcu implements StateDriver {
 		}
 	}
 
-	public function get(string $key, $default = null) {
+	public function get(string $key, mixed $default = null): mixed {
 		$success = null;
 		if (!apcu_exists($this->prefix . $key)) {
 			return $default;

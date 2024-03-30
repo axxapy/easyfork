@@ -2,122 +2,86 @@
 
 namespace axxapy\EasyFork;
 
+use Closure;
 use RuntimeException;
+use axxapy\EasyFork\SharedMemoryDrivers\DriverFactory;
 
-class Fork {
-	private $child_pid = 0;
-
-	private $job;
-	private $num;
-
-	/** @var ForkState */
-	private $state;
-
-	private $generation = 0;
-
-	private $interrupt_handler;
-
-	public function __construct(callable $job, int $num = 0) {
-		$this->job   = $job;
-		$this->num   = $num;
-		$this->state = new ForkState($this->num, $this->generation);
-
-		pcntl_async_signals(true);
-	}
-
-	public function setInterruptHandler(callable $handler): self {
-		$this->interrupt_handler = $handler;
-		return $this;
+readonly class Fork {
+	public function __construct(
+		private Closure       $job,
+		private ?string       $id = null,
+		private ?Logger       $logger = null,
+		private ?Closure      $signal_handler = null,
+		private ?SharedMemory $shared_memory = null,
+		private ?Closure      $shared_memory_driver_factory = null,
+		private string        $title_prefix = "[{parent_pid}|FORK]",
+	) {
+		$this->logger?->addPrefix($this->id ?? "FORK");
 	}
 
 	/** @throws RuntimeException */
-	public function start(array $payload = []): bool {
-		if ($this->isRunning()) {
-			return false;
-		}
+	public function run(mixed ...$run_args): ProcessManager {
+		$shared_memory = $this->shared_memory ?? new SharedMemory(
+			driver_factory: $this->shared_memory_driver_factory ?? fn() => DriverFactory::createDriver(),
+		);
 
-		$this->state = new ForkState($this->num, $this->generation++, $payload, $this->state->getStorageDriver());
+		$parent_pid = getmypid();
 
 		$pid = pcntl_fork();
-		if ($pid < 0) {
-			throw new RuntimeException('Failed to fork. Out of memory?');
+		$pid >= 0 || throw new RuntimeException('Failed to fork. Out of memory?');
+
+		if ($pid > 0) { // parent
+			return new ProcessManager(
+				id           : $this->id ?? $parent_pid . '_' . $pid,
+				pid          : $pid,
+				shared_memory: $shared_memory,
+			);
 		}
 
-		if ($pid === 0) {
-			$this->registerSigHandler();
+		// fork
+		$self = new Process(
+			id           : $this->id ?? $parent_pid . '_' . getmypid(),
+			pid          : getmypid(),
+			shared_memory: $shared_memory,
+		);
 
-			$title = sprintf('[%s:%s] ', $this->num, $this->generation) . implode(' ', $_SERVER['argv']); //cli_get_process_title();
-			@cli_set_process_title($title);
+		$this->signal_handler && $this->registerSignalHandler($self);
 
-			if (call_user_func($this->job, $this->state) === true) {
-				$this->state->markDone();
+		$title_prefix = '';
+		if ($this->title_prefix) {
+			$replaces     = ['{parent_pid}' => $parent_pid, '{pid}' => $self->pid, '{id}' => $self->id];
+			$title_prefix = str_replace(array_keys($replaces), array_values($replaces), $this->title_prefix) . ' ';
+		}
+		@cli_set_process_title($title_prefix . implode(' ', $_SERVER['argv'])); //cli_get_process_title();
+
+		$result = $this->job->call($self, ...$run_args);
+		exit(match (true) {
+			is_bool($result) => $result === true ? 0 : 1,
+			default          => (int)$result,
+		});
+	}
+
+	private function registerSignalHandler(Process $process): void {
+		$pid     = getmypid();
+		$handler = function (int $signo) use ($pid, $process): void {
+			if ($pid !== getmypid()) {
+				return;
 			}
-			die();
-		}
 
-		$this->child_pid = $pid;
-		return true;
-	}
+			$this->logger?->log("Got signal", $signo);
 
-	public function getPid(): int {
-		return $this->child_pid;
-	}
+			if ($this->signal_handler?->call($process, $signo) === false) {
+				$this->logger?->logf("Signal (%d) handler returned false. Do not interrupt.", $signo);
+				return;
+			}
 
-	public function getState(): ForkState {
-		return $this->state;
-	}
-
-	public function stop(): bool {
-		if (!$this->isRunning()) {
-			return true;
-		}
-
-		if (!posix_kill($this->child_pid, SIGTERM)) {
-			return false;
-		}
-
-		usleep(1000);
-		return !$this->isRunning();
-	}
-
-	public function kill(): bool {
-		if (!$this->isRunning()) {
-			return true;
-		}
-
-		if (!posix_kill($this->child_pid, SIGKILL)) {
-			return false;
-		}
-
-		usleep(1000);
-		return !$this->isRunning();
-	}
-
-	public function isRunning(): bool {
-		if (!$this->child_pid) return false;
-
-		$res = pcntl_waitpid($this->child_pid, $status, WNOHANG);
-		usleep(1000);
-		return !($res == -1 || $res > 0);
-	}
-
-	public function waitFor() {
-		if ($this->isRunning()) {
-			$null = null;
-			pcntl_waitpid($this->child_pid, $null);
-		}
-	}
-
-	private function registerSigHandler(): void {
-		$pid = getmypid();
-		$handler = function (int $signo) use ($pid) {
-			if ($pid !== getmypid()) return;
-
-			if ($this->interrupt_handler) {
-				call_user_func($this->interrupt_handler, $this->state, $signo);
+			if ($signo == SIGTERM || $signo == SIGINT) {
+				$this->logger?->logf("Got %s signal. Shutting down.", $signo);
+				exit;
 			}
 		};
 
+		pcntl_async_signals(true);
 		foreach ([SIGTERM, SIGHUP, SIGINT, SIGUSR1, SIGUSR2] as $signo) {
 			pcntl_signal($signo, $handler);
 		}
