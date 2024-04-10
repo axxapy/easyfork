@@ -22,7 +22,7 @@ class ForkPoolExecutor {
 	public function __construct(
 		private readonly Closure          $job,
 		private readonly int              $forks = 1,
-		private readonly Logger           $logger = new Logger(prefix: "MAIN"),
+		private readonly ?Logger          $logger = new Logger(prefix: "MAIN"),
 		private readonly RunMode          $run_mode = RunMode::RUN_ONCE,
 		private readonly SharedMemoryMode $shared_memory_mode = SharedMemoryMode::ISOLATED,
 		private readonly ?SharedMemory    $shared_memory = null,
