@@ -54,7 +54,8 @@ readonly class Fork {
 		}
 		@cli_set_process_title($title_prefix . implode(' ', $_SERVER['argv'])); //cli_get_process_title();
 
-		$result = $this->job->call($self, ...$run_args);
+		$job = $this->job;
+		$result = $job($self, ...$run_args);
 		exit(match (true) {
 			is_bool($result) => $result === true ? 0 : 1,
 			default          => (int)$result,

@@ -55,11 +55,10 @@ class InMemoryViaSocketTest extends TestCase {
 
 	public function testMultiThread() {
 		$result = (new ForkPoolExecutor(
-			job          : function () {
-				/** @var Process $this */
-				$count                          = $this->shared_memory[$this->id] ?? 0;
-				$this->shared_memory[$this->id] = ++$count;
-				return $this->shared_memory[$this->id] >= 100;
+			job          : function (Process $proc) {
+				$count                          = $proc->shared_memory[$proc->id] ?? 0;
+				$proc->shared_memory[$proc->id] = ++$count;
+				return $proc->shared_memory[$proc->id] >= 100;
 			},
 			forks        : 10,
 			run_mode     : RunMode::RUN_UNTIL_SUCCESS,

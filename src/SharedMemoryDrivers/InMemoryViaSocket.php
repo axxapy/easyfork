@@ -2,6 +2,7 @@
 
 namespace axxapy\EasyFork\SharedMemoryDrivers;
 
+use axxapy\EasyFork\_\_;
 use axxapy\EasyFork\Fork;
 use axxapy\EasyFork\Process;
 use RuntimeException;
@@ -15,10 +16,8 @@ class InMemoryViaSocket implements DriverInterface {
 		$this->master_pid      = getmypid();
 		$this->socket_filename = $socket_filename ?? $this->default_socket_filename();
 		$socket_filename       = $this->socket_filename;
-		$encode                = fn(string $key, mixed $value): string => $this->encode($key, $value);
-		$decode                = fn(string $encoded): array => $this->decode($encoded);
 
-		$this->server_process = (new Fork(job: function (...$args) use ($socket_filename, $encode, $decode) {
+		$this->server_process = (new Fork(job: function (Process $proc, ...$args) use ($socket_filename) {
 			set_time_limit(0);
 
 			$socket = socket_create(AF_UNIX, SOCK_STREAM, 0);
@@ -42,8 +41,7 @@ class InMemoryViaSocket implements DriverInterface {
 					throw new RuntimeException("Error: Failed to accept connection\n");
 				}
 
-				$request  = socket_read($clientSocket, 1024);
-				$response = '';
+				$request = socket_read($clientSocket, 1024);
 
 				// Process the command
 				$parts   = explode(' ', trim($request), 2);
@@ -51,7 +49,7 @@ class InMemoryViaSocket implements DriverInterface {
 
 				switch ($command) {
 					case 'put':
-						$decoded = $decode($parts[1]);
+						$decoded = $this->decode($parts[1]);
 						[$key, $value] = [$decoded['k'], $decoded['v']];
 						$memory[$key] = $value;
 						$response     = "OK\n";
@@ -60,7 +58,7 @@ class InMemoryViaSocket implements DriverInterface {
 					case 'get':
 						$key = trim($parts[1]);
 						if (array_key_exists($key, $memory)) {
-							$response = "OK:" . $encode($key, $memory[$key]) . "\n";
+							$response = "OK:" . $this->encode($key, $memory[$key]) . "\n";
 						} else {
 							$response = "NOT_FOUND:Key not found\n";
 						}
@@ -77,7 +75,7 @@ class InMemoryViaSocket implements DriverInterface {
 			socket_close($socket);
 		}, shared_memory_driver_factory: fn() => new Dummy))->run();
 
-		usleep(10000);
+		usleep(_::$TICK_TIME_US);
 	}
 
 	public function __destruct() {

@@ -10,8 +10,6 @@ use axxapy\EasyFork\ProcessManager;
 use axxapy\EasyFork\SharedMemory;
 use axxapy\EasyFork\SharedMemoryDrivers\Apcu;
 use axxapy\EasyFork\SharedMemoryDrivers\Dummy;
-use axxapy\EasyFork\SharedMemoryDrivers\Filesystem;
-use axxapy\EasyFork\SharedMemoryDrivers\InMemoryViaSocket;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
@@ -55,11 +53,10 @@ class ApcuTest extends TestCase {
 
 	public function testMultiThread() {
 		$result = (new ForkPoolExecutor(
-			job          : function () {
-				/** @var Process $this */
-				$count                          = $this->shared_memory[$this->id] ?? 0;
-				$this->shared_memory[$this->id] = ++$count;
-				return $this->shared_memory[$this->id] >= 100;
+			job          : function (Process $proc) {
+				$count                          = $proc->shared_memory[$proc->id] ?? 0;
+				$proc->shared_memory[$proc->id] = ++$count;
+				return $proc->shared_memory[$proc->id] >= 100;
 			},
 			forks        : 10,
 			run_mode     : RunMode::RUN_UNTIL_SUCCESS,

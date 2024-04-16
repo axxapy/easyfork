@@ -2,9 +2,8 @@ Single fork
 =============
 Create signle fork and read it's result:
 ```php
-$proc = (new Fork(job: function() {
-    /** @var Process $this */
-    $this->shared_memory['job_is_done'] = true;
+$proc = (new Fork(job: function(Process $proc) {
+    $proc->shared_memory['job_is_done'] = true;
 }))->run();
 
 var_dump($proc->shared_memory['job_is_done']); // null
@@ -18,11 +17,9 @@ var_dump($proc->shared_memory['job_is_done']); // true
 Downloaded multiple web pages in parallel:
 ```php
 
-$fork = new Fork(job: function(...$args) {
+$fork = new Fork(job: function(Process $proc, ...$args) {
     $url = $args[0];
-
-    /** @var Process $this */
-    $this->shared_memory['result'] = file_get_contents($url);
+    $proc->shared_memory['result'] = file_get_contents($url);
 });
 
 $procs = [
@@ -43,8 +40,8 @@ foreach ($procs as $proc) {
 # ForkPoolExecutor
 ```php
 $stop = false;
-$result = (new ForkPoolExecutor(job: function() use (&$stop) {
-	$this->shared_memory["fork_$this->id"] = 'result';
+$result = (new ForkPoolExecutor(job: function(Process $proc) use (&$stop) {
+	$proc->shared_memory["fork_$this->id"] = 'result';
 }))->run();
 
 var_dump($result);

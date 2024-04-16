@@ -1,6 +1,5 @@
 <?php namespace axxapy\EasyFork\Tests;
 
-use axxapy\EasyFork\_\_;
 use axxapy\EasyFork\Fork;
 use axxapy\EasyFork\Process;
 use axxapy\EasyFork\ProcessManager;
@@ -27,9 +26,7 @@ class ForkTest extends TestCase {
 	#[TestWith([1, 1])]
 	#[TestWith([99, 99])]
 	public function testExitCode(mixed $return_value, int $expected_exit_code) {
-		$exit_code = (new Fork(job: function () use ($return_value) {
-			return $return_value;
-		}))->run()->waitFor();
+		$exit_code = (new Fork(job: fn() => $return_value))->run()->waitFor();
 		$this->assertEquals($expected_exit_code, $exit_code);
 	}
 
@@ -39,9 +36,7 @@ class ForkTest extends TestCase {
 	#[TestWith([1, 1])]
 	#[TestWith([99, 99])]
 	public function testExitCodeViaIsRunning(mixed $return_value, int $expected_exit_code) {
-		$proc = (new Fork(job: function () use ($return_value) {
-			return $return_value;
-		}))->run();
+		$proc = (new Fork(job: fn () => $return_value))->run();
 		while ($proc->isRunning()) {
 			usleep(1000);
 		}
@@ -51,8 +46,8 @@ class ForkTest extends TestCase {
 
 	public function testInterruptHandlerExit() {
 		$proc = (new Fork(
-			job: function () {
-				TestHelper::confirmStarted($this);
+			job: function (Process $proc) {
+				TestHelper::confirmStarted($proc);
 				sleep(100500);
 			},
 			signal_handler: function (int $signo): bool {
@@ -71,8 +66,8 @@ class ForkTest extends TestCase {
 
 	public function testInterruptHandlerIgnoresSignal() {
 		$proc = (new Fork(
-			job: function () {
-				TestHelper::confirmStarted($this);
+			job: function (Process $proc) {
+				TestHelper::confirmStarted($proc);
 				while (true) {
 					sleep(100500);
 				}
@@ -104,8 +99,8 @@ class ForkTest extends TestCase {
 	public function testGracefulShutdownNoKill() {
 		$stop_signal_received = false;
 		$proc = (new Fork(
-			job: function () use (&$stop_signal_received) {
-				TestHelper::confirmStarted($this);
+			job: function (Process $proc) use (&$stop_signal_received) {
+				TestHelper::confirmStarted($proc);
 				while (!$stop_signal_received) {
 					sleep(100500);
 				}

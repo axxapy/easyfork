@@ -33,9 +33,8 @@ class ProcessManagerTest extends TestCase {
 	}
 
 	public function testIsRunning() {
-		$proc = (new Fork(job: function () {
-			/** @var Process $this */
-			$this->shared_memory['done'] = true;
+		$proc = (new Fork(job: function (Process $proc) {
+			$proc->shared_memory['done'] = true;
 			return 123;
 		}, shared_memory_driver_factory: fn() => new InMemoryViaSocket))->run();
 
@@ -52,9 +51,7 @@ class ProcessManagerTest extends TestCase {
 	}
 
 	public function testWaitFor() {
-		$proc = (new Fork(job: function () {
-			return 123;
-		}, shared_memory_driver_factory: fn() => new InMemoryViaSocket))->run();
+		$proc = (new Fork(job: fn() => 123, shared_memory_driver_factory: fn() => new InMemoryViaSocket))->run();
 		$this->assertEquals(123, $proc->waitFor());
 
 		// second call, exit code from variable
@@ -77,8 +74,8 @@ class ProcessManagerTest extends TestCase {
 	public function testStopNoKill() {
 		$stop = false;
 		$proc = (new Fork(
-			job           : function () use (&$stop) {
-				TestHelper::confirmStarted($this);
+			job           : function (Process $proc) use (&$stop) {
+				TestHelper::confirmStarted($proc);
 
 				while (!$stop) usleep(1000);
 				return 9;
@@ -98,8 +95,8 @@ class ProcessManagerTest extends TestCase {
 	public function testKillGracefulStop() {
 		$stop_after = 0;
 		$proc       = (new Fork(
-			job           : function () use (&$stop_after) {
-				TestHelper::confirmStarted($this);
+			job           : function (Process $proc) use (&$stop_after) {
+				TestHelper::confirmStarted($proc);
 
 				while ($stop_after == 0 || microtime(true) < $stop_after) {
 					usleep(1000);
@@ -125,8 +122,8 @@ class ProcessManagerTest extends TestCase {
 
 	public function testKillTimeoutKill() {
 		$proc = (new Fork(
-			job           : function () use (&$stop_by) {
-				TestHelper::confirmStarted($this);
+			job           : function (Process $proc) use (&$stop_by) {
+				TestHelper::confirmStarted($proc);
 
 				while (true) sleep(1);
 				return 9;

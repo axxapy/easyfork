@@ -35,9 +35,8 @@ class ForkPoolExecutorTest extends TestCase {
 	#[TestWith([SharedMemoryMode::COMMON, ['x'], ['args_0' => ['x'], 'args_1' => ['x'], 'args_2' => ['x']]])]
 	public function testSharedMemoryModes(SharedMemoryMode $mode, array $args, array $expected_result) {
 		$result = (new ForkPoolExecutor(
-			job: function (...$args) {
-				/** @var Process $this */
-				$this->shared_memory["args_{$this->id}"] = $args;
+			job: function (Process $proc, ...$args) {
+				$proc->shared_memory["args_{$proc->id}"] = $args;
 			},
 			forks:              3,
 			shared_memory_mode: $mode,
@@ -49,10 +48,9 @@ class ForkPoolExecutorTest extends TestCase {
 	#[TestWith([RunMode::RUN_UNTIL_SUCCESS, [['counter' => 3]]])]
 	public function testRunModes(RunMode $mode, array $expected_result) {
 		$result = (new ForkPoolExecutor(
-			job: function (...$args) {
-				/** @var Process $this */
-				$this->shared_memory['counter'] += 1;
-				return $this->shared_memory['counter'] >= 3;
+			job: function (Process $proc, ...$args) {
+				$proc->shared_memory['counter'] += 1;
+				return $proc->shared_memory['counter'] >= 3;
 			},
 			run_mode: $mode,
 		))->run();
@@ -64,9 +62,8 @@ class ForkPoolExecutorTest extends TestCase {
 
 		$must_stop = false;
 		$executor = new ForkPoolExecutor(
-			job           : function () use (&$must_stop) {
-				/** @var Process $this */
-				$this->shared_memory['counter'] += 1;
+			job           : function (Process $proc) use (&$must_stop) {
+				$proc->shared_memory['counter'] += 1;
 				while (!$must_stop) {
 					sleep(1);
 				}
@@ -78,8 +75,7 @@ class ForkPoolExecutorTest extends TestCase {
 			},
 		);
 
-		(new Fork(job: function() {
-			/** @var Process $this */
+		(new Fork(job: function(Process $proc) {
 		}, shared_memory_driver_factory: fn() => new Dummy))->run();
 
 		$executor->run();
