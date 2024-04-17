@@ -67,7 +67,7 @@ class ForkPoolExecutor {
 		for ($i = 0; $i < $this->forks; $i++) {
 			$this->_forks[] = new _fork(
 				process   : $new_fork(
-					id           : (string)$i,
+					id           : (string)(++$i),
 					generation   : 0,
 					shared_memory: $common_shared_memory ?: new SharedMemory (
 						driver_factory: $this->shared_memory_driver_factory ?? fn() => DriverFactory::createDriver(),
