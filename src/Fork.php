@@ -3,6 +3,7 @@
 namespace axxapy\EasyFork;
 
 use Closure;
+use ErrorException;
 use RuntimeException;
 use axxapy\EasyFork\SharedMemoryDrivers\DriverFactory;
 
@@ -39,6 +40,7 @@ readonly class Fork {
 		}
 
 		// fork
+		try {ob_clean();} catch (ErrorException) {} // clean output buffer that might've been left by the parent process
 		$self = new Process(
 			id           : $this->id ?? $parent_pid . '_' . getmypid(),
 			pid          : getmypid(),
